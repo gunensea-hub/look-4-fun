@@ -1355,39 +1355,141 @@ Rules:
       const catColor = getTextColor(selectedCategory ?? 'rate');
       const heading = selectedCategory ? (selectedCategory === 'rate' ? t('allCategories') : t(selectedCategory)) : t('analysisType');
 
-      const asHtml = (() => {
-        const safe = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        let inner = '';
-        if (!analysis) return `<p>${safe(t('noCategoryResults') ?? 'No results')}</p>`;
+      // Helper to escape HTML entities
+      const safe = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      // Build plain text version
+      const buildPlainText = () => {
+        let text = `${t('appName')}\n`;
+        text += `${(currentPlanDef?.emojiIcon ?? '')} ${currentPlanDef?.planet ?? ''} · ${currentPlanDef?.mythology ?? ''}\n\n`;
+        text += `${t('selectedStyle')}: ${heading}\n\n`;
+
+        if (!analysis) {
+          text += `${t('noCategoryResults') ?? 'No results'}\n`;
+          return text;
+        }
+
         if ('results' in (analysis as AllCategoriesAnalysis)) {
           const a = analysis as AllCategoriesAnalysis;
-          inner += `<h2 style="margin:0 0 12px 0;color:${catColor};font-weight:900;">${safe(t('overallStyleScore'))}: ${formatScore(a.overallScore)}/12</h2>`;
-          inner += `<p style="color:${catColor};font-weight:800;line-height:1.6;">${safe(a.overallAnalysis)}</p>`;
-          inner += `<h3 style="margin:16px 0 8px 0;color:#6A1B9A;font-weight:900;">${safe(t('categoryBreakdown7') ?? 'Category breakdown')}</h3>`;
+          text += `${t('overallStyleScore')}: ${formatScore(a.overallScore)}/12\n`;
+          text += `${a.overallAnalysis}\n\n`;
+          text += `${t('categoryBreakdown7') ?? 'Category breakdown'}:\n\n`;
+          a.results.forEach((r) => {
+            text += `• ${t(r.category as string)}: ${formatScore(r.score)}/12\n`;
+            text += `  ${r.analysis}\n`;
+            if (Array.isArray(r.suggestions) && r.suggestions.length > 0) {
+              r.suggestions.forEach((s) => {
+                text += `  - ${s}\n`;
+              });
+            }
+            text += '\n';
+          });
+        } else {
+          const a = analysis as OutfitAnalysis;
+          const rc = getTextColor(selectedCategory as StyleCategory);
+          text += `${t('yourStyleScore')}: ${formatScore(a.score)}/12\n\n`;
+          text += `${t('styleAnalysis')}:\n${a.style}\n\n`;
+          text += `${t('colorCoordination')}:\n${a.colorCoordination}\n\n`;
+          text += `${t('accessories')}:\n${a.accessories}\n\n`;
+          text += `${t('overallHarmony')}:\n${a.harmony}\n\n`;
+          if (Array.isArray(a.suggestions) && a.suggestions.length > 0) {
+            text += `${t('improvementSuggestions')}:\n`;
+            a.suggestions.forEach((s) => {
+              text += `- ${s}\n`;
+            });
+          }
+        }
+        text += `\n${t('faceProtected') ?? ''}\n`;
+        return text;
+      };
+
+      // Build HTML version with email-friendly formatting
+      const buildHtml = () => {
+        let inner = '';
+        if (!analysis) {
+          inner += `<p style="color:#666;font-family:Arial,sans-serif;">${safe(t('noCategoryResults') ?? 'No results')}</p>`;
+        } else if ('results' in (analysis as AllCategoriesAnalysis)) {
+          const a = analysis as AllCategoriesAnalysis;
+          inner += `<h2 style="color:${catColor};font-family:Arial,sans-serif;margin:0 0 10px 0;">${safe(t('overallStyleScore'))}: ${formatScore(a.overallScore)}/12</h2>`;
+          inner += `<p style="color:${catColor};font-family:Arial,sans-serif;line-height:1.5;">${safe(a.overallAnalysis)}</p>`;
+          inner += `<hr style="border:none;border-top:1px solid #eee;margin:15px 0;" />`;
+          inner += `<h3 style="color:#6A1B9A;font-family:Arial,sans-serif;margin:15px 0 10px 0;">${safe(t('categoryBreakdown7') ?? 'Category breakdown')}</h3>`;
           inner += a.results.map((r) => {
             const rc = getTextColor(r.category as StyleCategory);
-            return `<div style="margin:12px 0 18px 0;">\n              <div style="display:flex;align-items:baseline;gap:6px;">\n                <span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:${STYLE_CATEGORIES.find(c=>c.id===r.category as any)?.color ?? '#999'}"></span>\n                <span style="font-weight:900;color:${rc};">${safe(t(r.category as string))}</span>\n                <span style="margin-left:auto;color:#FFD700;font-weight:bold;">${formatScore(r.score)}/12</span>\n              </div>\n              <p style="margin:8px 0 0 0;color:${rc};font-weight:800;line-height:1.6;">${safe(r.analysis)}</p>\n              ${Array.isArray(r.suggestions) ? `<ul style="margin:8px 0 0 16px;color:${rc};font-weight:700;">${r.suggestions.map(s=>`<li>${safe(s)}</li>`).join('')}</ul>` : ''}\n            </div>`
+            const catColorHex = STYLE_CATEGORIES.find(c=>c.id===r.category as any)?.color ?? '#999';
+            return `<div style="margin:15px 0;padding:10px;background:#f9f9f9;border-radius:8px;">` +
+              `<div style="margin-bottom:8px;">` +
+              `<span style="color:${catColorHex};font-size:20px;">&#9679;</span> ` +
+              `<strong style="color:${rc};font-family:Arial,sans-serif;">${safe(t(r.category as string))}</strong> ` +
+              `<span style="color:#B8860B;font-weight:bold;">${formatScore(r.score)}/12</span>` +
+              `</div>` +
+              `<p style="color:${rc};font-family:Arial,sans-serif;margin:5px 0;line-height:1.5;">${safe(r.analysis)}</p>` +
+              (Array.isArray(r.suggestions) && r.suggestions.length > 0
+                ? `<ul style="color:${rc};font-family:Arial,sans-serif;margin:5px 0;padding-left:20px;">${r.suggestions.map(s=>`<li>${safe(s)}</li>`).join('')}</ul>`
+                : '') +
+              `</div>`;
           }).join('');
         } else {
           const a = analysis as OutfitAnalysis;
           const rc = getTextColor(selectedCategory as StyleCategory);
-          inner += `<div style="margin:0 0 12px 0;display:flex;align-items:baseline;gap:6px;">\n            <h2 style="margin:0;color:${rc};font-weight:900;">${safe(t('yourStyleScore'))}</h2>\n            <span style="color:#FFD700;font-weight:bold;font-size:20px;">${formatScore(a.score)}/12</span>\n          </div>`;
-          inner += `<h3 style="margin:8px 0 4px 0;color:${rc};font-weight:900;">${safe(t('styleAnalysis'))}</h3>`;
-          inner += `<p style="margin:0;color:${rc};font-weight:700;line-height:1.6;">${safe(a.style)}</p>`;
-          inner += `<h3 style="margin:12px 0 4px 0;color:${rc};font-weight:900;">${safe(t('colorCoordination'))}</h3>`;
-          inner += `<p style="margin:0;color:${rc};font-weight:700;line-height:1.6;">${safe(a.colorCoordination)}</p>`;
-          inner += `<h3 style="margin:12px 0 4px 0;color:${rc};font-weight:900;">${safe(t('accessories'))}</h3>`;
-          inner += `<p style="margin:0;color:${rc};font-weight:700;line-height:1.6;">${safe(a.accessories)}</p>`;
-          inner += `<h3 style="margin:12px 0 4px 0;color:${rc};font-weight:900;">${safe(t('overallHarmony'))}</h3>`;
-          inner += `<p style="margin:0;color:${rc};font-weight:700;line-height:1.6;">${safe(a.harmony)}</p>`;
-          if (Array.isArray(a.suggestions)) {
-            inner += `<h3 style="margin:16px 0 8px 0;color:#1a1a1a;font-weight:900;">${safe(t('improvementSuggestions'))}</h3>`;
-            inner += `<ul style="margin:0 0 0 16px;color:${rc};font-weight:700;">${a.suggestions.map(s=>`<li>${safe(s)}</li>`).join('')}</ul>`;
+          inner += `<h2 style="color:${rc};font-family:Arial,sans-serif;margin:0 0 10px 0;">${safe(t('yourStyleScore'))}: <span style="color:#B8860B;">${formatScore(a.score)}/12</span></h2>`;
+          inner += `<hr style="border:none;border-top:1px solid #eee;margin:15px 0;" />`;
+          inner += `<h3 style="color:${rc};font-family:Arial,sans-serif;margin:15px 0 5px 0;">${safe(t('styleAnalysis'))}</h3>`;
+          inner += `<p style="color:${rc};font-family:Arial,sans-serif;line-height:1.5;">${safe(a.style)}</p>`;
+          inner += `<h3 style="color:${rc};font-family:Arial,sans-serif;margin:15px 0 5px 0;">${safe(t('colorCoordination'))}</h3>`;
+          inner += `<p style="color:${rc};font-family:Arial,sans-serif;line-height:1.5;">${safe(a.colorCoordination)}</p>`;
+          inner += `<h3 style="color:${rc};font-family:Arial,sans-serif;margin:15px 0 5px 0;">${safe(t('accessories'))}</h3>`;
+          inner += `<p style="color:${rc};font-family:Arial,sans-serif;line-height:1.5;">${safe(a.accessories)}</p>`;
+          inner += `<h3 style="color:${rc};font-family:Arial,sans-serif;margin:15px 0 5px 0;">${safe(t('overallHarmony'))}</h3>`;
+          inner += `<p style="color:${rc};font-family:Arial,sans-serif;line-height:1.5;">${safe(a.harmony)}</p>`;
+          if (Array.isArray(a.suggestions) && a.suggestions.length > 0) {
+            inner += `<hr style="border:none;border-top:1px solid #eee;margin:15px 0;" />`;
+            inner += `<h3 style="color:#333;font-family:Arial,sans-serif;margin:15px 0 10px 0;">${safe(t('improvementSuggestions'))}</h3>`;
+            inner += `<ul style="color:${rc};font-family:Arial,sans-serif;padding-left:20px;">${a.suggestions.map(s=>`<li>${safe(s)}</li>`).join('')}</ul>`;
           }
         }
-        const imgHtml = `<div style="margin:16px 0;"><em style="color:#999;">${safe(t('faceProtected') ?? '')}</em></div>`;
-        return `<!doctype html><html><body style="font-family: -apple-system, Roboto, Helvetica, Arial, sans-serif; background:#FFE4E6; padding:16px;">\n          <div style="max-width:720px;margin:0 auto;background:rgba(255,255,255,0.95);border-radius:16px;padding:16px;">\n            <h1 style="margin:0 0 4px 0;color:#9B59B6;font-style:italic;font-weight:900;">${safe(t('appName'))}</h1>\n            <div style="margin:4px 0 16px 0;color:#FFD700;font-weight:900;font-size:12px;">\n              <span>${(currentPlanDef?.emojiIcon ?? '') + ' ' + (currentPlanDef?.planet ?? '') + ' · ' + (currentPlanDef?.mythology ?? '')}</span>\n            </div>\n            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">\n              <span style="display:inline-block;width:8px;height:8px;border-radius:4px;background:${STYLE_CATEGORIES.find(c=>c.id===selectedCategory)?.color ?? '#FFD700'}"></span>\n              <span style="font-weight:700;color:#1a1a1a;">${safe(t('selectedStyle'))}:: ${safe(heading)}</span>\n            </div>\n            ${inner}\n            ${imgHtml}\n          </div>\n        </body></html>`;
-      })();
+        const imgHtml = `<p style="color:#999;font-family:Arial,sans-serif;font-style:italic;margin-top:20px;">${safe(t('faceProtected') ?? '')}</p>`;
+        const catColorHex = STYLE_CATEGORIES.find(c=>c.id===selectedCategory)?.color ?? '#FFD700';
+        return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${safe(t('appName'))}</title>
+</head>
+<body style="margin:0;padding:20px;background-color:#f5f5f5;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background-color:#ffffff;border-radius:12px;overflow:hidden;">
+          <tr>
+            <td style="padding:20px;background:linear-gradient(135deg,#FFE4E6 0%,#FFF0F5 100%);">
+              <h1 style="margin:0 0 5px 0;color:#9B59B6;font-family:Arial,sans-serif;font-style:italic;">${safe(t('appName'))}</h1>
+              <p style="margin:0;color:#B8860B;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;">
+                ${(currentPlanDef?.emojiIcon ?? '')} ${currentPlanDef?.planet ?? ''} · ${currentPlanDef?.mythology ?? ''}
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px;">
+              <div style="margin-bottom:15px;">
+                <span style="color:${catColorHex};font-size:16px;">&#9679;</span>
+                <strong style="color:#333;font-family:Arial,sans-serif;">${safe(t('selectedStyle'))}: ${safe(heading)}</strong>
+              </div>
+              ${inner}
+              ${imgHtml}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+      };
+
+      const asHtml = buildHtml();
+      const asPlainText = buildPlainText();
 
       if (Platform.OS === 'web') {
         try {
@@ -1420,15 +1522,22 @@ Rules:
           console.log('MailComposer failed, falling back to file share', e);
         }
       }
+
+      // Fallback: share as plain text with HTML file attachment
       const dir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory ?? undefined;
       if (!dir) {
-        await Share.share({ message: t('htmlDownloaded') ?? 'Attach the generated HTML file to your email.' });
+        await Share.share({ message: asPlainText });
         return;
       }
       const htmlPath = `${dir}outfit-analysis-${Date.now()}.html`;
       await FileSystem.writeAsStringAsync(htmlPath, asHtml, { encoding: FileSystem.EncodingType.UTF8 });
-      await Share.share({ url: htmlPath, message: `${t('appName')} - ${t('selectedStyle')}: ${heading}` });
-    } catch {
+      await Share.share({
+        url: htmlPath,
+        message: asPlainText,
+        title: `${t('appName')} - ${t('selectedStyle')}: ${heading}`
+      });
+    } catch (err) {
+      console.error('Email support error:', err);
       Alert.alert(t('error'), 'Email failed');
     }
   };
