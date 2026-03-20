@@ -9,10 +9,12 @@ import {
   ActivityIndicator,
   Platform,
   Modal,
+  Pressable,
   Animated,
   AppState,
   AppStateStatus,
   Share,
+  Linking,
 } from 'react-native';
 import { Image } from 'expo-image';
 import * as MailComposer from 'expo-mail-composer';
@@ -20,7 +22,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Camera, Upload, Star, Sparkles, Lightbulb, History, Shield, Heart, Crown, Coffee, Flower, Zap, Gamepad2, Music, X, Check, FileText, CreditCard, Settings, Scissors, TrendingUp, Home } from 'lucide-react-native';
+import { Camera, Upload, Star, Sparkles, Lightbulb, History, Shield, Heart, Crown, Coffee, Flower, Zap, Gamepad2, Music, X, Check, FileText, CreditCard, AlertCircle, Settings, Scissors, TrendingUp, Home } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path, G } from 'react-native-svg';
 import { useSubscription, SubscriptionTier } from '../contexts/SubscriptionContext';
@@ -96,7 +98,7 @@ const TEXT_COLOR_MAP: Record<StyleCategory, string> = {
   rate: '#6A1B9A',
 } as const;
 
-const getTextColor = (category: StyleCategory | null | undefined): string => {
+const getTextColor = (category: StyleCategory | string | null | undefined): string => {
   if (!category) return '#6A1B9A';
   const key = category as StyleCategory;
   return TEXT_COLOR_MAP[key] ?? '#6A1B9A';
@@ -111,7 +113,7 @@ export default function OutfitRatingScreen() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showCategorySelection, setShowCategorySelection] = useState(false);
   // Using HistoryContext instead of local state
-  const { items: savedRatings, addItem: addHistoryItem, updateItem: updateHistoryItem, clearHistory: clearHistoryItems, maxItems } = useHistory();
+  const { items: savedRatings, addItem: addHistoryItem, updateItem: updateHistoryItem, removeItem: removeHistoryItem, clearHistory: clearHistoryItems, maxItems } = useHistory();
   const [isAppActive, setIsAppActive] = useState<boolean>(true);
   const isMountedRef = useRef<boolean>(true);
   const ignoreResponsesRef = useRef<boolean>(false);
@@ -130,7 +132,8 @@ export default function OutfitRatingScreen() {
   const { subscription, canAnalyze, incrementAnalysisCount, plans } = useSubscription();
   const { user } = useAuth();
   const { t, language } = useLanguage();
-  const _showSuggestions = subscription.tier !== 'free';
+  const isPremiumLike = subscription.tier === 'premium' || subscription.tier === 'ultimate';
+  const showSuggestions = subscription.tier !== 'free';
 
   const displayCategoryName = React.useCallback((id?: string | null): string => {
     if (!id) return '';
@@ -282,7 +285,7 @@ export default function OutfitRatingScreen() {
   const currentHistoryIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    void checkTermsAcceptance();
+    checkTermsAcceptance();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -337,7 +340,7 @@ export default function OutfitRatingScreen() {
         setShouldResume(false);
         setTimeout(() => {
           if (isMountedRef.current && !isAnalyzing) {
-            void analyzeOutfit();
+            analyzeOutfit();
           }
         }, 250);
       }
@@ -349,7 +352,6 @@ export default function OutfitRatingScreen() {
       isMountedRef.current = false;
       sub.remove();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldResume, selectedImage, selectedCategory, isAnalyzing]);
 
   useFocusEffect(
@@ -360,7 +362,7 @@ export default function OutfitRatingScreen() {
         setShouldResume(false);
         setTimeout(() => {
           if (isMountedRef.current && !isAnalyzing) {
-            void analyzeOutfit();
+            analyzeOutfit();
           }
         }, 250);
       }
@@ -368,7 +370,6 @@ export default function OutfitRatingScreen() {
         console.log('Screen blurred');
         // Do not cancel analysis when navigating away; avoid warnings.
       };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [shouldResume, selectedImage, selectedCategory, isAnalyzing])
   );
 
@@ -648,7 +649,7 @@ export default function OutfitRatingScreen() {
       if (!validateTextQuality(a.accessories, softMin)) return { ok: false, reason: 'accessories_short' };
       if (!validateTextQuality(a.harmony, softMin)) return { ok: false, reason: 'harmony_short' };
       return { ok: true };
-    } catch {
+    } catch (e) {
       return { ok: false, reason: 'exception' };
     }
   }
@@ -764,7 +765,7 @@ export default function OutfitRatingScreen() {
             } catch {}
           }
           setAnalysis(result);
-          void incrementAnalysisCount();
+          incrementAnalysisCount();
           if (!savedForActiveIdRef.current && selectedImage && categoryToUse) {
             const rating: SavedRating = {
               id: Date.now().toString(),
@@ -775,7 +776,7 @@ export default function OutfitRatingScreen() {
               timestamp: Date.now(),
               planTier: subscription.tier,
             };
-            void (async () => {
+            (async () => {
               const hid = await saveRating({ ...rating, lang: language });
               currentHistoryIdRef.current = hid;
             })();
@@ -865,7 +866,7 @@ export default function OutfitRatingScreen() {
       // Note: Translation updates are handled by the HistoryContext
       // We don't need to manually update the savedRatings here
       return updated;
-    } catch {
+    } catch (e) {
       return rating;
     }
   };
@@ -1000,7 +1001,7 @@ export default function OutfitRatingScreen() {
   const buildExportText = (): string => {
     try {
       const parts: string[] = [];
-      const _headerKey = selectedCategory === 'rate' ? 'allCategories' : (selectedCategory ?? '');
+      const headerKey = selectedCategory === 'rate' ? 'allCategories' : (selectedCategory ?? '');
       const header = selectedCategory ? `${t('selectedStyle')}: ${displayCategoryName(selectedCategory)}` : t('analysisType');
       parts.push(header);
       if (!analysis) return parts.join('\n');
@@ -1034,7 +1035,7 @@ export default function OutfitRatingScreen() {
     }
   };
 
-  const _exportAnalysis = async () => {
+  const exportAnalysis = async () => {
     try {
       if (!analysis) {
         Alert.alert(t('error'), t('noCategoryResults'));
@@ -1066,7 +1067,7 @@ export default function OutfitRatingScreen() {
       const path = dir + fileName;
       await FileSystem.writeAsStringAsync(path, content, { encoding: FileSystem.EncodingType.UTF8 });
       await Share.share({ url: path, message: content });
-    } catch {
+    } catch (e) {
       Alert.alert(t('error'), t('couldNotClearHistory'));
     }
   };
@@ -1085,7 +1086,7 @@ export default function OutfitRatingScreen() {
     suggestions: DesignMatchItem[];
   }
 
-  const parseDesignMatch = React.useCallback((text: string, _lang: Language): DesignMatchParsed => {
+  const parseDesignMatch = React.useCallback((text: string, lang: Language): DesignMatchParsed => {
     try {
       const lines = (text || '')
         .split(/\r?\n+/)
@@ -1181,7 +1182,7 @@ export default function OutfitRatingScreen() {
   }, []);
 
   React.useEffect(() => {
-    void (async () => {
+    (async () => {
       try {
         if (!designMatchText) return;
         const updated = await translateDesignMatchIfNeeded(designMatchText, language);
@@ -1190,8 +1191,7 @@ export default function OutfitRatingScreen() {
         }
       } catch {}
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, designMatchText, translateDesignMatchIfNeeded]);
+  }, [language]);
 
   async function directLLMAnalysis(input: { imageBase64: string; category: StyleCategory; language: Language; plan: string; }): Promise<OutfitAnalysis | AllCategoriesAnalysis> {
     const systemLang = input.language === 'tr' ? 'Turkish' : 'English';
@@ -1298,7 +1298,7 @@ Rules:
       } catch (e) {
         console.log('Failed to update history with design match', e);
       }
-    } catch {
+    } catch (e) {
       setDesignMatchText(language === 'tr' ? 'Eşleşme oluşturulamadı.' : 'Could not generate matches.');
     } finally {
       setDesignMatchLoading(false);
@@ -1386,7 +1386,7 @@ Rules:
           });
         } else {
           const a = analysis as OutfitAnalysis;
-          const _rc = getTextColor(selectedCategory as StyleCategory);
+          const rc = getTextColor(selectedCategory as StyleCategory);
           text += `${t('yourStyleScore')}: ${formatScore(a.score)}/12\n\n`;
           text += `${t('styleAnalysis')}:\n${a.style}\n\n`;
           text += `${t('colorCoordination')}:\n${a.colorCoordination}\n\n`;
@@ -1503,7 +1503,7 @@ Rules:
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
           Alert.alert(t('exported') ?? 'Exported', t('htmlDownloaded') ?? 'HTML downloaded. Attach it to your email.');
-        } catch {
+        } catch (e) {
           Alert.alert(t('error'), 'Web export failed');
         }
         return;
@@ -1547,7 +1547,7 @@ Rules:
     setAnalysis(null);
   };
 
-  const _renderScoreStars = (_score: number) => null;
+  const renderScoreStars = (_score: number) => null;
 
   const PinkGlasses = () => (
     <Svg
@@ -2244,7 +2244,7 @@ Rules:
           } catch {}
         }
         setAnalysis(result);
-        void incrementAnalysisCount();
+        incrementAnalysisCount();
         if (!savedForActiveIdRef.current && selectedImage && selectedCategory) {
           const rating: SavedRating = {
             id: Date.now().toString(),
@@ -2255,7 +2255,7 @@ Rules:
             timestamp: Date.now(),
             planTier: subscription.tier,
           };
-          void (async () => {
+          (async () => {
             const hid = await saveRating({ ...rating, lang: language });
             currentHistoryIdRef.current = hid;
           })();
@@ -2271,7 +2271,6 @@ Rules:
         Alert.alert(t('error'), errorMsg);
       }
     } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusQuery.data]);
 
   return (
@@ -3332,7 +3331,7 @@ Rules:
                         }
                         setSelectedCategory(category.id);
                         setAnalysis(null);
-                        void analyzeOutfit(category.id);
+                        analyzeOutfit(category.id);
                       }}
                     >
                       {/* Sixties - Retro Pattern */}
